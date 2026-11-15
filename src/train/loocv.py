@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 
 import sys
 import os
+import random
 
 ROOT_DIR = os.path.join(os.path.dirname(__file__), '..', '..')
 sys.path.append(os.path.abspath(ROOT_DIR))
@@ -27,7 +28,9 @@ def run_losocv(
         N_tr = 7,
         lr = 1e-3,
         device = 'cuda',
-        save_dir = None,    
+        save_dir = "./checkpoints/PPG_LOSO_bs32_lr1e-3" , 
+        num_val_subjects = 2, # 每个fold抽取2个受试者
+        seed = 42             # 确保划分可复现   
 ):
 
     all_maes = []
@@ -45,16 +48,26 @@ def run_losocv(
     for test_subject in range(1, num_subjects + 1):
         print(f"Fold: {test_subject}/{num_subjects}")
 
-        train_subjects = []
+        
+        candidates = []
         for i in range(1, num_subjects + 1):
             if i == test_subject:
                 continue
-            train_subjects.append(i)
+            candidates.append(i)
 
+        
+        rng = random.Random(seed + test_subject)
+        val_subjects = rng.sample(candidates, num_val_subjects)
+        train_subjects = [s for s in candidates if s not in val_subjects]
+
+        print(f"train subjects: {train_subjects}")
+        print(f"test subjects: {test_subject}")
         train_dataset = PPGDaliaDataset(train_subjects, data_dir, N_tr = N_tr)
+        val_dataset = PPGDaliaDataset(val_subjects, data_dir, N_tr = N_tr)
         test_dataset = PPGDaliaDataset([test_subject], data_dir, N_tr = N_tr)
 
         train_loader = DataLoader(train_dataset, batch_size = batch_size, shuffle = True, drop_last= False, num_workers=4, pin_memory=True,)
+        val_loader = DataLoader(val_dataset, batch_size = batch_size, shuffle = False, drop_last=False)
         test_loader = DataLoader(test_dataset, batch_size = batch_size, shuffle = False, drop_last=False)
 
         # 初始化模型
@@ -63,30 +76,44 @@ def run_losocv(
         criterion = nn.L1Loss()
 
         # 训练
-        best_test_mae = float('inf')
+        best_val_mae = float('inf')
+        best_epoch = 0
+        best_state_dict = None
         for epoch in range(1, num_epochs + 1):
             train_mae = train_epoch(model, train_loader, optimizer, criterion, device)
-            test_mae = eval_epoch(model, test_loader, criterion, device)
+            val_mae = eval_epoch(model, val_loader, criterion, device)
 
-            if test_mae < best_test_mae:
-                best_test_mae = test_mae
+            if val_mae < best_val_mae:
+                best_val_mae = val_mae
+                best_epoch = epoch
+            
+                best_state_dict = {k: v.detach().clone() for k, v in model.state_dict().items()}
                 if save_dir is not None:
                     torch.save({
                         'epoch': epoch,
                         'model_state_dict': model.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict(),
-                        'best_test_mae': best_test_mae,
+                        'val_mae': val_mae,
                         'test_subject': test_subject,
+                        'val_subjects': val_subjects,
+                        'config': {'N_tr': N_tr, 'lr': lr, 'batch_size': batch_size},
                     }, os.path.join(save_dir, f'fold_{test_subject}_best.pth'))
 
             if epoch % 10 == 0 or epoch == 1:
-                print(f"Epoch: {epoch}/{num_epochs}, Train MAE: {train_mae:.4f}, Test MAE: {test_mae:.4f}")
+                print(f"Epoch {epoch}/{num_epochs}, train MAE: {train_mae:.4f}, val MAE: {val_mae:.4f}")
+        
+        if best_state_dict is not None:
+            model.load_state_dict(best_state_dict)
 
-        all_maes.append(best_test_mae)
+        test_mae = eval_epoch(model, test_loader, criterion, device)
+        print(f"fold {test_subject}: Test MAE: {test_mae:.4f}" 
+              f"(best Val MAE: {best_val_mae:.4f} at epoch {best_epoch})")
+        all_maes.append(test_mae)
 
-    print(f"Mean MAE: {sum(all_maes) / len(all_maes):.4f}")
+    mean_mae = sum(all_maes) / len(all_maes)
+    print(f"Mean Test MAE: {mean_mae:.4f}")
     for i, mae in enumerate(all_maes):
-        print(f"Subject {i+1}: {mae:.4f}")
+        print(f"subject{i+1}: {mae:.4f}")
+
     if save_dir is not None:
         torch.save({
             'all_maes': all_maes,
@@ -97,23 +124,15 @@ def run_losocv(
                 'num_epochs': num_epochs,
                 'N_tr': N_tr,
                 'lr': lr,
+                'num_val_subjects': num_val_subjects,
+                'seed': seed,
             },
         }, os.path.join(save_dir, 'summary.pth'))
 
-    return all_maes
+    return all_maes    
         
 
-    
 
-# 临时测试
-if __name__ == "__main__":
-    run_losocv(
-        data_dir="D:/develop/IDEA/PPG_project/Deep_PPG/processed_data/dalia_fft",
-        num_subjects=15,
-        batch_size = 32, 
-        num_epochs=3, 
-        N_tr = 7,
-        lr = 1e-3,
-        device = 'cuda',
-        save_dir = "D:/develop/IDEA/PPG_project/Deep_PPG/checkpoints",
-    )
+            
+
+        
