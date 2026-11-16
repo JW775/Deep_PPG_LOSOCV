@@ -7,8 +7,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.data_processing.fft_spectrum import fft_and_normalize
 
-NPZ_DIR = 'D:/develop/IDEA/PPG_project/Deep_PPG/processed_data/dalia_segments'
-FFT_OUT_DIR = 'D:/develop/IDEA/PPG_project/Deep_PPG/processed_data/dalia_fft'
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+NPZ_DIR     = os.path.join(ROOT_DIR, 'processed_data', 'dalia_segments')
+FFT_OUT_DIR = os.path.join(ROOT_DIR, 'processed_data', 'dalia_fft')
 
 fs_ppg = 64
 fs_acc = 32

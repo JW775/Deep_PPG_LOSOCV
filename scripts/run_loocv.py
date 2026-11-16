@@ -13,20 +13,22 @@ import torch
 # 确保项目根目录在 sys.path 里
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
-    sys.path.append(ROOT_DIR)
+    sys.path.append(0,ROOT_DIR)
 
 from src.train.loocv import run_losocv
 
 # 默认配置
 DEFAULT_CONFIG = {
-    "data_dir": "D:/develop/IDEA/PPG_project/Deep_PPG/processed_data/dalia_fft",
+    "data_dir": os.path.join(ROOT_DIR, "processed_data", "dalia_fft"),
     "num_subjects": 15,
     "batch_size": 32,
     "num_epochs": 100,
     "N_tr": 7,
     "lr": 1e-3,
     "device": "cuda" if torch.cuda.is_available() else "cpu",
-    "save_dir": "D:/develop/IDEA/PPG_project/Deep_PPG/checkpoints", 
+    "save_dir": os.path.join(ROOT_DIR, "checkpoints"), 
+    "seed": 42,
+    "num_val_subjects": 2,
 }
 
 
@@ -41,12 +43,26 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=DEFAULT_CONFIG["lr"])
     parser.add_argument("--device", type=str, default=DEFAULT_CONFIG["device"])
     parser.add_argument("--save_dir", type=str, default=None)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--num_val_subjects", type=int, default=2)
 
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    
+    args.data_dir = os.path.abspath(os.path.expanduser(args.data_dir))
+    if not os.path.isdir(args.data_dir):
+        raise FileNotFoundError(f"data_dir 不存在: {args.data_dir}")
+    if not os.path.exists(os.path.join(args.data_dir, "s_1.npz")):
+        raise FileNotFoundError(
+            f"{args.data_dir} 下找不到 s_1.npz, 请先运行:\n"
+            f"  python -m scripts.preprocess_npz\n"
+            f"  python -m scripts.preprocess_fft"
+        )
+    if args.save_dir is not None:
+        args.save_dir = os.path.abspath(os.path.expanduser(args.save_dir))
 
     print("=" * 60)
     print("DeepPPG LOSO-CV Training")
@@ -69,6 +85,8 @@ def main():
         lr=args.lr,
         device=args.device,
         save_dir=args.save_dir,
+        num_val_subjects=args.num_val_subjects,
+        seed=args.seed,
     )
 
 

@@ -13,12 +13,13 @@ import sys
 import os
 import random
 
-ROOT_DIR = os.path.join(os.path.dirname(__file__), '..', '..')
-sys.path.append(os.path.abspath(ROOT_DIR))
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
 from src.model.model import DeepPPG
-from dataset import PPGDaliaDataset
-from train_utils import train_epoch, eval_epoch
+from src.train.dataset import PPGDaliaDataset
+from src.train.train_utils import train_epoch, eval_epoch
 
 def run_losocv(
         data_dir,
